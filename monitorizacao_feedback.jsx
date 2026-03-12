@@ -100,162 +100,47 @@ function buildNotes(data) {
 }
 
 // ─── EXCEL PARSER ─────────────────────────────────────────────────────────────
-async function parseExcel(file) {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const loadXLSX = () => {
-          const XLSX = window.XLSX;
-          const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" });
-          const ws = wb.Sheets[wb.SheetNames[0]];
-          const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-          const SKIP = new Set([".", "nenhum","nenhuma","nao sei","nao","não","nada a referir","não sei","nada a apontar","nada a referir.","não tem","nada a dizer","nada","nada.","x","nenhuk",""]);
-          const headers = rows[0] || [];
-          const positivos = [], negativos = [];
-          for (let r = 1; r < rows.length; r++) {
-            for (let c = 0; c < headers.length; c++) {
-              const h = String(headers[c] || "");
-              const v = String(rows[r][c] || "").trim();
-              if (!v || SKIP.has(v.toLowerCase())) continue;
-              if (h.includes("Aspeto positivo") && !h.includes("Pontos") && !h.includes("Feedback")) positivos.push(v);
-              else if (h.includes("Aspeto Negativo") && !h.includes("Pontos") && !h.includes("Feedback")) negativos.push(v);
-            }
-          }
-          resolve({ positivos, negativos, totalRespostas: rows.length - 1, fileName: file.name.replace(/\.[^.]+$/, "") });
-        };
-        if (window.XLSX) { loadXLSX(); }
-        else {
-          const s = document.createElement("script");
-          s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-          s.onload = loadXLSX;
-          s.onerror = () => resolve(null);
-          document.head.appendChild(s);
-        }
-      } catch { resolve(null); }
-    };
-    reader.readAsArrayBuffer(file);
-  });
+let xlsxModulePromise;
+
+function getXLSX() {
+  if (!xlsxModulePromise) {
+    xlsxModulePromise = import("xlsx");
+  }
+  return xlsxModulePromise;
 }
 
-// ─── STYLES ───────────────────────────────────────────────────────────────────
-const STYLES = `
-  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=DM+Mono:wght@300;400;500&display=swap');
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  :root {
-    --bg: #060b12; --s1: rgba(255,255,255,0.038); --s2: rgba(255,255,255,0.062);
-    --bd: rgba(255,255,255,0.082); --bd2: rgba(255,255,255,0.16);
-    --tx: #dde4f0; --tx2: rgba(221,228,240,0.65); --tx3: rgba(221,228,240,0.36);
-    --G: #4ade80; --R: #f87171; --B: #60a5fa; --P: #c084fc; --Y: #fbbf24;
-    --gG: rgba(74,222,128,0.08); --gR: rgba(248,113,113,0.08);
-    --gB: rgba(96,165,250,0.08); --gP: rgba(192,132,252,0.08);
+async function parseExcel(file) {
+  try {
+    const XLSX = await getXLSX();
+    const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+    const SKIP = new Set([".", "nenhum", "nenhuma", "nao sei", "nao", "não", "nada a referir", "não sei", "nada a apontar", "nada a referir.", "não tem", "nada a dizer", "nada", "nada.", "x", "nenhuk", ""]);
+    const headers = rows[0] || [];
+    const positivos = [];
+    const negativos = [];
+
+    for (let r = 1; r < rows.length; r++) {
+      for (let c = 0; c < headers.length; c++) {
+        const h = String(headers[c] || "");
+        const v = String(rows[r][c] || "").trim();
+        if (!v || SKIP.has(v.toLowerCase())) continue;
+        if (h.includes("Aspeto positivo") && !h.includes("Pontos") && !h.includes("Feedback")) positivos.push(v);
+        else if (h.includes("Aspeto Negativo") && !h.includes("Pontos") && !h.includes("Feedback")) negativos.push(v);
+      }
+    }
+
+    return {
+      positivos,
+      negativos,
+      totalRespostas: rows.length - 1,
+      fileName: file.name.replace(/\.[^.]+$/, "")
+    };
+  } catch {
+    return null;
   }
-  html, body { height: 100%; background: var(--bg); }
-  .app { min-height: 100vh; color: var(--tx); font-family: 'Cormorant Garamond', Georgia, serif; position: relative; overflow-x: hidden; }
-  .bg { position: fixed; inset: 0; pointer-events: none; z-index: 0;
-    background: radial-gradient(ellipse 90% 55% at 15% 5%, rgba(96,165,250,0.05) 0%, transparent 65%),
-      radial-gradient(ellipse 55% 45% at 85% 85%, rgba(192,132,252,0.04) 0%, transparent 65%),
-      radial-gradient(ellipse 40% 35% at 55% 40%, rgba(74,222,128,0.03) 0%, transparent 55%); }
-  .grid { position: fixed; inset: 0; pointer-events: none; z-index: 0;
-    background-image: linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
-    background-size: 52px 52px; }
-  .wrap { position: relative; z-index: 1; max-width: 1020px; margin: 0 auto; padding: 0 28px 100px; }
+}
 
-  /* HEADER */
-  .hdr { padding: 52px 0 38px; border-bottom: 1px solid var(--bd); margin-bottom: 36px; }
-  .hdr-eye { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: .2em; color: var(--tx3); text-transform: uppercase; margin-bottom: 14px; }
-  .hdr-h1 { font-size: clamp(30px, 4.5vw, 50px); font-weight: 600; line-height: 1.05; letter-spacing: -.025em; margin-bottom: 6px; }
-  .hdr-h1 em { font-style: normal; color: var(--B); }
-  .hdr-file { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--tx3); margin-bottom: 28px; }
-
-  /* STAT BAR */
-  .sbar { display: flex; gap: 2px; background: var(--s1); border: 1px solid var(--bd); border-radius: 11px; padding: 3px; margin-bottom: 26px; }
-  .sitem { flex: 1; padding: 13px 16px; border-radius: 8px; transition: background .2s; cursor: default; }
-  .sitem:hover { background: var(--s2); }
-  .sval { font-size: 24px; font-weight: 700; font-family: 'DM Mono', monospace; line-height: 1; }
-  .slbl { font-size: 10px; color: var(--tx3); font-family: 'DM Mono', monospace; letter-spacing: .06em; margin-top: 3px; }
-  .sdiv { width: 1px; background: var(--bd); flex-shrink: 0; }
-  .sratio { flex: 2; min-width: 0; }
-  .ratio-track { height: 5px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; display: flex; margin-bottom: 5px; }
-  .rpos { background: var(--G); transition: width .8s ease; }
-  .rneg { background: var(--R); transition: width .8s ease; }
-  .ratio-lbl { display: flex; justify-content: space-between; font-family: 'DM Mono', monospace; font-size: 10px; }
-
-  /* ACTIONS */
-  .acts { display: flex; gap: 10px; flex-wrap: wrap; }
-  .btn { display: inline-flex; align-items: center; gap: 8px; border-radius: 8px; padding: 10px 20px; font-size: 12.5px; font-family: 'DM Mono', monospace; letter-spacing: .04em; cursor: pointer; transition: all .18s; border: 1px solid transparent; font-weight: 500; }
-  .btn:disabled { opacity: .35; cursor: not-allowed; }
-  .btn-ai { background: rgba(96,165,250,.1); border-color: rgba(96,165,250,.28); color: #93c5fd; }
-  .btn-ai:hover:not(:disabled) { background: rgba(96,165,250,.18); border-color: rgba(96,165,250,.48); }
-  .btn-ghost { background: var(--s1); border-color: var(--bd); color: var(--tx2); }
-  .btn-ghost:hover:not(:disabled) { background: var(--s2); border-color: var(--bd2); }
-  .btn-sm { padding: 5px 13px; font-size: 11px; }
-  .btn-copy { padding: 5px 12px; font-size: 11px; background: transparent; border-color: var(--bd); color: var(--tx3); }
-  .btn-copy:hover { border-color: var(--bd2); color: var(--tx2); }
-  .btn-copy.ok { border-color: rgba(74,222,128,.4); color: var(--G); }
-
-  /* DROP ZONE */
-  .dz { border: 1.5px dashed var(--bd); border-radius: 10px; padding: 16px 22px; text-align: center; cursor: pointer; transition: all .2s; margin-bottom: 14px; }
-  .dz:hover, .dz.over { border-color: rgba(96,165,250,.4); background: rgba(96,165,250,.03); }
-  .dz span { font-family: 'DM Mono', monospace; font-size: 11.5px; color: var(--tx3); }
-  .dz a { color: #93c5fd; text-decoration: none; }
-
-  /* SECTION LABEL */
-  .slabel { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--tx3); letter-spacing: .18em; text-transform: uppercase; margin: 32px 0 14px; display: flex; align-items: center; gap: 12px; }
-  .slabel::after { content: ''; flex: 1; height: 1px; background: var(--bd); }
-
-  /* CARD */
-  .card { background: var(--s1); border: 1px solid var(--bd); border-radius: 14px; overflow: hidden; margin-bottom: 14px; transition: border-color .25s, box-shadow .25s; animation: fadeUp .35s ease both; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
-  .card:hover { border-color: var(--bd2); }
-  .card.lit { box-shadow: inset 0 1px 0 var(--glow, transparent); }
-  @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-  .card-hdr { display: flex; justify-content: space-between; align-items: center; padding: 18px 22px 16px; border-bottom: 1px solid var(--bd); }
-  .card-tg { display: flex; align-items: center; gap: 12px; }
-  .card-bar { width: 3px; height: 34px; border-radius: 2px; flex-shrink: 0; }
-  .card-title { font-size: 15.5px; font-weight: 600; letter-spacing: -.01em; }
-  .card-sub { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--tx3); letter-spacing: .08em; text-transform: uppercase; margin-top: 2px; }
-  .card-body { padding: 22px; }
-
-  /* THEME BARS */
-  .tbar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-  .tbar-label { font-size: 13px; color: var(--tx2); min-width: 0; flex: 1; line-height: 1.4; }
-  .tbar-track { width: 140px; flex-shrink: 0; height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
-  .tbar-fill { height: 100%; border-radius: 2px; transition: width .9s cubic-bezier(.22,1,.36,1); }
-  .tbar-count { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--tx3); min-width: 28px; text-align: right; }
-
-  /* SYNTH TEXT */
-  .synth { font-size: 15px; line-height: 1.82; color: var(--tx2); }
-  .synth p { margin-bottom: 9px; }
-  .synth p:last-child { margin-bottom: 0; }
-  .synth strong { color: var(--tx); font-weight: 600; }
-  .rec-list { list-style: none; }
-  .rec-item { display: flex; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--bd); font-size: 14px; line-height: 1.65; color: var(--tx2); }
-  .rec-item:last-child { border-bottom: none; }
-  .rec-num { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--tx3); min-width: 18px; padding-top: 2px; }
-
-  /* PROGRESS */
-  .ptrack { height: 2px; background: rgba(255,255,255,0.05); border-radius: 1px; margin-top: 14px; overflow: hidden; }
-  .pfill { height: 100%; border-radius: 1px; opacity: .4; }
-
-  /* NOTES */
-  .ngrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-  .ncol-title { font-family: 'DM Mono', monospace; font-size: 10px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--bd); }
-  .nchip { background: var(--s1); border: 1px solid var(--bd); border-left: 2.5px solid transparent; border-radius: 8px; padding: 10px 13px; margin-bottom: 8px; font-size: 13.5px; line-height: 1.6; color: var(--tx2); transition: background .15s; }
-  .nchip:hover { background: var(--s2); }
-
-  /* RAW */
-  details summary { cursor: pointer; font-family: 'DM Mono', monospace; font-size: 11px; color: var(--tx3); letter-spacing: .08em; padding: 10px 0; user-select: none; list-style: none; }
-  details summary::-webkit-details-marker { display: none; }
-  .raw-item { font-size: 12.5px; color: var(--tx2); padding: 5px 10px; border-radius: 5px; margin-bottom: 4px; line-height: 1.55; }
-
-  @media (max-width: 640px) {
-    .ngrid { grid-template-columns: 1fr; }
-    .sratio { flex: 100% 0 0; }
-    .tbar-track { width: 80px; }
-  }
-`;
-
-// ─── COMPONENTS ───────────────────────────────────────────────────────────────
 function CopyBtn({ text }) {
   const [ok, setOk] = useState(false);
   return (
